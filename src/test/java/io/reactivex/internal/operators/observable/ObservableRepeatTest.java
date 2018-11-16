@@ -37,7 +37,7 @@ public class ObservableRepeatTest {
 
     @Test(timeout = 2000)
     public void testRepetition() {
-        int NUM = 10;
+        int num = 10;
         final AtomicInteger count = new AtomicInteger();
         int value = Observable.unsafeCreate(new ObservableSource<Integer>() {
 
@@ -47,9 +47,9 @@ public class ObservableRepeatTest {
                 o.onComplete();
             }
         }).repeat().subscribeOn(Schedulers.computation())
-        .take(NUM).blockingLast();
+        .take(num).blockingLast();
 
-        assertEquals(NUM, value);
+        assertEquals(num, value);
     }
 
     @Test(timeout = 2000)
@@ -162,20 +162,20 @@ public class ObservableRepeatTest {
                 .repeat(3)
                 .distinct();
 
-        TestObserver<Integer> ts = new TestObserver<Integer>();
+        TestObserver<Integer> to = new TestObserver<Integer>();
 
-        src.subscribe(ts);
+        src.subscribe(to);
 
-        ts.assertNoErrors();
-        ts.assertTerminated();
-        ts.assertValues(1, 2, 3);
+        to.assertNoErrors();
+        to.assertTerminated();
+        to.assertValues(1, 2, 3);
     }
 
     /** Issue #2844: wrong target of request. */
     @Test(timeout = 3000)
     public void testRepeatRetarget() {
         final List<Integer> concatBase = new ArrayList<Integer>();
-        TestObserver<Integer> ts = new TestObserver<Integer>();
+        TestObserver<Integer> to = new TestObserver<Integer>();
         Observable.just(1, 2)
         .repeat(5)
         .concatMap(new Function<Integer, Observable<Integer>>() {
@@ -187,11 +187,11 @@ public class ObservableRepeatTest {
                         .delay(200, TimeUnit.MILLISECONDS);
             }
         })
-        .subscribe(ts);
+        .subscribe(to);
 
-        ts.awaitTerminalEvent();
-        ts.assertNoErrors();
-        ts.assertNoValues();
+        to.awaitTerminalEvent();
+        to.assertNoErrors();
+        to.assertNoValues();
 
         assertEquals(Arrays.asList(1, 2, 1, 2, 1, 2, 1, 2, 1, 2), concatBase);
     }
@@ -323,5 +323,78 @@ public class ObservableRepeatTest {
         })
         .test()
         .assertFailure(TestException.class, 1, 2, 3);
+    }
+
+    @Test
+    public void noCancelPreviousRepeat() {
+        final AtomicInteger counter = new AtomicInteger();
+
+        Observable<Integer> source = Observable.just(1).doOnDispose(new Action() {
+            @Override
+            public void run() throws Exception {
+                counter.getAndIncrement();
+            }
+        });
+
+        source.repeat(5)
+        .test()
+        .assertResult(1, 1, 1, 1, 1);
+
+        assertEquals(0, counter.get());
+    }
+
+    @Test
+    public void noCancelPreviousRepeatUntil() {
+        final AtomicInteger counter = new AtomicInteger();
+
+        Observable<Integer> source = Observable.just(1).doOnDispose(new Action() {
+            @Override
+            public void run() throws Exception {
+                counter.getAndIncrement();
+            }
+        });
+
+        final AtomicInteger times = new AtomicInteger();
+
+        source.repeatUntil(new BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() throws Exception {
+                return times.getAndIncrement() == 4;
+            }
+        })
+        .test()
+        .assertResult(1, 1, 1, 1, 1);
+
+        assertEquals(0, counter.get());
+    }
+
+    @Test
+    public void noCancelPreviousRepeatWhen() {
+        final AtomicInteger counter = new AtomicInteger();
+
+        Observable<Integer> source = Observable.just(1).doOnDispose(new Action() {
+            @Override
+            public void run() throws Exception {
+                counter.getAndIncrement();
+            }
+        });
+
+        final AtomicInteger times = new AtomicInteger();
+
+        source.repeatWhen(new Function<Observable<Object>, ObservableSource<?>>() {
+            @Override
+            public ObservableSource<?> apply(Observable<Object> e) throws Exception {
+                return e.takeWhile(new Predicate<Object>() {
+                    @Override
+                    public boolean test(Object v) throws Exception {
+                        return times.getAndIncrement() < 4;
+                    }
+                });
+            }
+        })
+        .test()
+        .assertResult(1, 1, 1, 1, 1);
+
+        assertEquals(0, counter.get());
     }
 }

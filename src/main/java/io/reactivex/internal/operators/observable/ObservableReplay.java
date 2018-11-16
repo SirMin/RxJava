@@ -24,13 +24,14 @@ import io.reactivex.disposables.Disposable;
 import io.reactivex.exceptions.Exceptions;
 import io.reactivex.functions.*;
 import io.reactivex.internal.disposables.*;
+import io.reactivex.internal.functions.ObjectHelper;
 import io.reactivex.internal.fuseable.HasUpstreamObservableSource;
 import io.reactivex.internal.util.*;
 import io.reactivex.observables.ConnectableObservable;
 import io.reactivex.plugins.RxJavaPlugins;
 import io.reactivex.schedulers.Timed;
 
-public final class ObservableReplay<T> extends ConnectableObservable<T> implements HasUpstreamObservableSource<T>, Disposable {
+public final class ObservableReplay<T> extends ConnectableObservable<T> implements HasUpstreamObservableSource<T>, ResettableConnectable {
     /** The source observable. */
     final ObservableSource<T> source;
     /** Holds the current subscriber that is, will be or just was subscribed to the source observable. */
@@ -158,15 +159,10 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
         return source;
     }
 
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
-    public void dispose() {
-        current.lazySet(null);
-    }
-
-    @Override
-    public boolean isDisposed() {
-        Disposable d = current.get();
-        return d == null || d.isDisposed();
+    public void resetIf(Disposable connectionObject) {
+        current.compareAndSet((ReplayObserver)connectionObject, null);
     }
 
     @Override
@@ -370,6 +366,7 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
                 replay();
             }
         }
+
         @Override
         public void onError(Throwable e) {
             // The observer front is accessed serially as required by spec so
@@ -382,6 +379,7 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
                 RxJavaPlugins.onError(e);
             }
         }
+
         @Override
         public void onComplete() {
             // The observer front is accessed serially as required by spec so
@@ -510,6 +508,7 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
         UnboundedReplayBuffer(int capacityHint) {
             super(capacityHint);
         }
+
         @Override
         public void next(T value) {
             add(NotificationLite.next(value));
@@ -618,6 +617,16 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
             // can't null out the head's value because of late replayers would see null
             setFirst(next);
         }
+
+        final void trimHead() {
+            Node head = get();
+            if (head.value != null) {
+                Node n = new Node(null);
+                n.lazySet(head.get());
+                set(n);
+            }
+        }
+
         /* test */ final void removeSome(int n) {
             Node head = get();
             while (n > 0) {
@@ -732,7 +741,7 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
          * based on its properties (i.e., truncate but the very last node).
          */
         void truncateFinal() {
-
+            trimHead();
         }
         /* test */ final  void collect(Collection<? super T> output) {
             Node n = getHead();
@@ -851,6 +860,7 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
                 setFirst(prev);
             }
         }
+
         @Override
         void truncateFinal() {
             long timeLimit = scheduler.now(unit) - maxAge;
@@ -1026,8 +1036,8 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
             ConnectableObservable<U> co;
             ObservableSource<R> observable;
             try {
-                co = connectableFactory.call();
-                observable = selector.apply(co);
+                co = ObjectHelper.requireNonNull(connectableFactory.call(), "The connectableFactory returned a null ConnectableObservable");
+                observable = ObjectHelper.requireNonNull(selector.apply(co), "The selector returned a null ObservableSource");
             } catch (Throwable e) {
                 Exceptions.throwIfFatal(e);
                 EmptyDisposable.error(e, child);

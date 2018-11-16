@@ -136,7 +136,7 @@ public final class ObservablePublish<T> extends ConnectableObservable<T> impleme
          */
         final AtomicBoolean shouldConnect;
 
-        final AtomicReference<Disposable> s = new AtomicReference<Disposable>();
+        final AtomicReference<Disposable> upstream = new AtomicReference<Disposable>();
 
         @SuppressWarnings("unchecked")
         PublishObserver(AtomicReference<PublishObserver<T>> current) {
@@ -148,13 +148,11 @@ public final class ObservablePublish<T> extends ConnectableObservable<T> impleme
         @SuppressWarnings("unchecked")
         @Override
         public void dispose() {
-            if (observers.get() != TERMINATED) {
-                InnerDisposable[] ps = observers.getAndSet(TERMINATED);
-                if (ps != TERMINATED) {
-                    current.compareAndSet(PublishObserver.this, null);
+            InnerDisposable[] ps = observers.getAndSet(TERMINATED);
+            if (ps != TERMINATED) {
+                current.compareAndSet(PublishObserver.this, null);
 
-                    DisposableHelper.dispose(s);
-                }
+                DisposableHelper.dispose(upstream);
             }
         }
 
@@ -164,8 +162,8 @@ public final class ObservablePublish<T> extends ConnectableObservable<T> impleme
         }
 
         @Override
-        public void onSubscribe(Disposable s) {
-            DisposableHelper.setOnce(this.s, s);
+        public void onSubscribe(Disposable d) {
+            DisposableHelper.setOnce(this.upstream, d);
         }
 
         @Override
@@ -174,6 +172,7 @@ public final class ObservablePublish<T> extends ConnectableObservable<T> impleme
                 inner.child.onNext(t);
             }
         }
+
         @SuppressWarnings("unchecked")
         @Override
         public void onError(Throwable e) {
@@ -187,6 +186,7 @@ public final class ObservablePublish<T> extends ConnectableObservable<T> impleme
                 RxJavaPlugins.onError(e);
             }
         }
+
         @SuppressWarnings("unchecked")
         @Override
         public void onComplete() {

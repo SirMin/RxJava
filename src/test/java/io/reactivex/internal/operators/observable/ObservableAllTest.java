@@ -124,6 +124,7 @@ public class ObservableAllTest {
 
         assertFalse(allOdd.blockingFirst());
     }
+
     @Test(timeout = 5000)
     public void testIssue1935NoUnsubscribeDownstreamObservable() {
         Observable<Integer> source = Observable.just(1)
@@ -143,10 +144,9 @@ public class ObservableAllTest {
         assertEquals((Object)2, source.blockingFirst());
     }
 
-
     @Test
     public void testPredicateThrowsExceptionAndValueInCauseMessageObservable() {
-        TestObserver<Boolean> ts = new TestObserver<Boolean>();
+        TestObserver<Boolean> to = new TestObserver<Boolean>();
 
         final IllegalArgumentException ex = new IllegalArgumentException();
 
@@ -156,16 +156,15 @@ public class ObservableAllTest {
                 throw ex;
             }
         })
-        .subscribe(ts);
+        .subscribe(to);
 
-        ts.assertTerminated();
-        ts.assertNoValues();
-        ts.assertNotComplete();
-        ts.assertError(ex);
+        to.assertTerminated();
+        to.assertNoValues();
+        to.assertNotComplete();
+        to.assertError(ex);
         // FIXME need to decide about adding the value that probably caused the crash in some way
 //        assertTrue(ex.getCause().getMessage().contains("Boo!"));
     }
-
 
     @Test
     public void testAll() {
@@ -256,6 +255,7 @@ public class ObservableAllTest {
 
         assertFalse(allOdd.blockingGet());
     }
+
     @Test(timeout = 5000)
     public void testIssue1935NoUnsubscribeDownstream() {
         Observable<Integer> source = Observable.just(1)
@@ -275,10 +275,9 @@ public class ObservableAllTest {
         assertEquals((Object)2, source.blockingFirst());
     }
 
-
     @Test
     public void testPredicateThrowsExceptionAndValueInCauseMessage() {
-        TestObserver<Boolean> ts = new TestObserver<Boolean>();
+        TestObserver<Boolean> to = new TestObserver<Boolean>();
 
         final IllegalArgumentException ex = new IllegalArgumentException();
 
@@ -288,12 +287,12 @@ public class ObservableAllTest {
                 throw ex;
             }
         })
-        .subscribe(ts);
+        .subscribe(to);
 
-        ts.assertTerminated();
-        ts.assertNoValues();
-        ts.assertNotComplete();
-        ts.assertError(ex);
+        to.assertTerminated();
+        to.assertNoValues();
+        to.assertNotComplete();
+        to.assertError(ex);
         // FIXME need to decide about adding the value that probably caused the crash in some way
 //        assertTrue(ex.getCause().getMessage().contains("Boo!"));
     }

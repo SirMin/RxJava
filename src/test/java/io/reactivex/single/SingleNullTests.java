@@ -13,7 +13,6 @@
 
 package io.reactivex.single;
 
-
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -664,7 +663,7 @@ public class SingleNullTests {
     public void liftFunctionReturnsNull() {
         just1.lift(new SingleOperator<Object, Integer>() {
             @Override
-            public SingleObserver<? super Integer> apply(SingleObserver<? super Object> s) {
+            public SingleObserver<? super Integer> apply(SingleObserver<? super Object> observer) {
                 return null;
             }
         }).blockingGet();
@@ -809,6 +808,7 @@ public class SingleNullTests {
             public void accept(Integer v) { }
         }, null);
     }
+
     @Test(expected = NullPointerException.class)
     public void subscribeSubscriberNull() {
         just1.toFlowable().subscribe((Subscriber<Integer>)null);
@@ -842,6 +842,11 @@ public class SingleNullTests {
     @Test(expected = NullPointerException.class)
     public void toNull() {
         just1.to(null);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void asNull() {
+        just1.as(null);
     }
 
     @Test(expected = NullPointerException.class)

@@ -126,8 +126,7 @@ public class ObservableOnErrorResumeNextViaFunctionTest {
         };
         Observable<String> o = Observable.unsafeCreate(w).onErrorResumeNext(resume);
 
-        @SuppressWarnings("unchecked")
-        DefaultObserver<String> observer = mock(DefaultObserver.class);
+        Observer<String> observer = TestHelper.mockObserver();
         o.subscribe(observer);
 
         try {
@@ -151,7 +150,7 @@ public class ObservableOnErrorResumeNextViaFunctionTest {
     @Test
     @Ignore("Failed operator may leave the child Observer in an inconsistent state which prevents further error delivery.")
     public void testOnErrorResumeReceivesErrorFromPreviousNonProtectedOperator() {
-        TestObserver<String> ts = new TestObserver<String>();
+        TestObserver<String> to = new TestObserver<String>();
         Observable.just(1).lift(new ObservableOperator<String, Integer>() {
 
             @Override
@@ -170,11 +169,11 @@ public class ObservableOnErrorResumeNextViaFunctionTest {
                 }
             }
 
-        }).subscribe(ts);
+        }).subscribe(to);
 
-        ts.assertTerminated();
-        System.out.println(ts.values());
-        ts.assertValue("success");
+        to.assertTerminated();
+        System.out.println(to.values());
+        to.assertValue("success");
     }
 
     /**
@@ -184,7 +183,7 @@ public class ObservableOnErrorResumeNextViaFunctionTest {
     @Test
     @Ignore("A crashing operator may leave the downstream in an inconsistent state and not suitable for event delivery")
     public void testOnErrorResumeReceivesErrorFromPreviousNonProtectedOperatorOnNext() {
-        TestObserver<String> ts = new TestObserver<String>();
+        TestObserver<String> to = new TestObserver<String>();
         Observable.just(1).lift(new ObservableOperator<String, Integer>() {
 
             @Override
@@ -192,8 +191,8 @@ public class ObservableOnErrorResumeNextViaFunctionTest {
                 return new Observer<Integer>() {
 
                     @Override
-                    public void onSubscribe(Disposable s) {
-                        t1.onSubscribe(s);
+                    public void onSubscribe(Disposable d) {
+                        t1.onSubscribe(d);
                     }
 
                     @Override
@@ -225,11 +224,11 @@ public class ObservableOnErrorResumeNextViaFunctionTest {
                 }
             }
 
-        }).subscribe(ts);
+        }).subscribe(to);
 
-        ts.assertTerminated();
-        System.out.println(ts.values());
-        ts.assertValue("success");
+        to.assertTerminated();
+        System.out.println(to.values());
+        to.assertValue("success");
     }
 
     @Test
@@ -259,12 +258,11 @@ public class ObservableOnErrorResumeNextViaFunctionTest {
 
         });
 
-        @SuppressWarnings("unchecked")
-        DefaultObserver<String> observer = mock(DefaultObserver.class);
+        Observer<String> observer = TestHelper.mockObserver();
 
-        TestObserver<String> ts = new TestObserver<String>(observer);
-        o.subscribe(ts);
-        ts.awaitTerminalEvent();
+        TestObserver<String> to = new TestObserver<String>(observer);
+        o.subscribe(to);
+        to.awaitTerminalEvent();
 
         verify(observer, Mockito.never()).onError(any(Throwable.class));
         verify(observer, times(1)).onComplete();
@@ -314,7 +312,7 @@ public class ObservableOnErrorResumeNextViaFunctionTest {
 
     @Test
     public void testBackpressure() {
-        TestObserver<Integer> ts = new TestObserver<Integer>();
+        TestObserver<Integer> to = new TestObserver<Integer>();
         Observable.range(0, 100000)
                 .onErrorResumeNext(new Function<Throwable, Observable<Integer>>() {
 
@@ -342,9 +340,9 @@ public class ObservableOnErrorResumeNextViaFunctionTest {
                     }
 
                 })
-                .subscribe(ts);
-        ts.awaitTerminalEvent();
-        ts.assertNoErrors();
+                .subscribe(to);
+        to.awaitTerminalEvent();
+        to.assertNoErrors();
     }
 
     @Test

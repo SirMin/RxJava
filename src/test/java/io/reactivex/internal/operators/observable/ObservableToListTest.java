@@ -26,6 +26,7 @@ import io.reactivex.*;
 import io.reactivex.Observable;
 import io.reactivex.Observer;
 import io.reactivex.exceptions.TestException;
+import io.reactivex.functions.Function;
 
 public class ObservableToListTest {
 
@@ -108,10 +109,10 @@ public class ObservableToListTest {
     @Test
     public void testList() {
         Observable<String> w = Observable.fromIterable(Arrays.asList("one", "two", "three"));
-        Single<List<String>> observable = w.toList();
+        Single<List<String>> single = w.toList();
 
         SingleObserver<List<String>> observer = TestHelper.mockSingleObserver();
-        observable.subscribe(observer);
+        single.subscribe(observer);
         verify(observer, times(1)).onSuccess(Arrays.asList("one", "two", "three"));
         verify(observer, Mockito.never()).onError(any(Throwable.class));
     }
@@ -119,10 +120,10 @@ public class ObservableToListTest {
     @Test
     public void testListViaObservable() {
         Observable<String> w = Observable.fromIterable(Arrays.asList("one", "two", "three"));
-        Single<List<String>> observable = w.toList();
+        Single<List<String>> single = w.toList();
 
         SingleObserver<List<String>> observer = TestHelper.mockSingleObserver();
-        observable.subscribe(observer);
+        single.subscribe(observer);
         verify(observer, times(1)).onSuccess(Arrays.asList("one", "two", "three"));
         verify(observer, Mockito.never()).onError(any(Throwable.class));
     }
@@ -130,13 +131,13 @@ public class ObservableToListTest {
     @Test
     public void testListMultipleSubscribers() {
         Observable<String> w = Observable.fromIterable(Arrays.asList("one", "two", "three"));
-        Single<List<String>> observable = w.toList();
+        Single<List<String>> single = w.toList();
 
         SingleObserver<List<String>> o1 = TestHelper.mockSingleObserver();
-        observable.subscribe(o1);
+        single.subscribe(o1);
 
         SingleObserver<List<String>> o2 = TestHelper.mockSingleObserver();
-        observable.subscribe(o2);
+        single.subscribe(o2);
 
         List<String> expected = Arrays.asList("one", "two", "three");
 
@@ -151,10 +152,10 @@ public class ObservableToListTest {
     @Ignore("Null values are not allowed")
     public void testListWithNullValue() {
         Observable<String> w = Observable.fromIterable(Arrays.asList("one", null, "three"));
-        Single<List<String>> observable = w.toList();
+        Single<List<String>> single = w.toList();
 
         SingleObserver<List<String>> observer = TestHelper.mockSingleObserver();
-        observable.subscribe(observer);
+        single.subscribe(observer);
         verify(observer, times(1)).onSuccess(Arrays.asList("one", null, "three"));
         verify(observer, Mockito.never()).onError(any(Throwable.class));
     }
@@ -269,5 +270,23 @@ public class ObservableToListTest {
         .test()
         .assertFailure(NullPointerException.class)
         .assertErrorMessage("The collectionSupplier returned a null collection. Null values are generally not allowed in 2.x operators and sources.");
+    }
+
+    @Test
+    public void doubleOnSubscribe() {
+        TestHelper.checkDoubleOnSubscribeObservable(new Function<Observable<Object>, Observable<List<Object>>>() {
+            @Override
+            public Observable<List<Object>> apply(Observable<Object> f)
+                    throws Exception {
+                return f.toList().toObservable();
+            }
+        });
+        TestHelper.checkDoubleOnSubscribeObservableToSingle(new Function<Observable<Object>, Single<List<Object>>>() {
+            @Override
+            public Single<List<Object>> apply(Observable<Object> f)
+                    throws Exception {
+                return f.toList();
+            }
+        });
     }
 }

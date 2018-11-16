@@ -16,15 +16,17 @@ package io.reactivex.internal.operators.completable;
 import static org.junit.Assert.*;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.Test;
 
 import io.reactivex.*;
+import io.reactivex.disposables.*;
 import io.reactivex.exceptions.TestException;
+import io.reactivex.internal.operators.completable.CompletableAmb.Amb;
 import io.reactivex.observers.TestObserver;
 import io.reactivex.plugins.RxJavaPlugins;
 import io.reactivex.processors.PublishProcessor;
-import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subjects.*;
 
 public class CompletableAmbTest {
@@ -70,7 +72,7 @@ public class CompletableAmbTest {
 
     @Test
     public void innerErrorRace() {
-        for (int i = 0; i < 500; i++) {
+        for (int i = 0; i < TestHelper.RACE_DEFAULT_LOOPS; i++) {
             List<Throwable> errors = TestHelper.trackPluginErrors();
             try {
                 final PublishProcessor<Integer> pp0 = PublishProcessor.create();
@@ -95,7 +97,7 @@ public class CompletableAmbTest {
                     }
                 };
 
-                TestHelper.race(r1, r2, Schedulers.single());
+                TestHelper.race(r1, r2);
 
                 to.assertFailure(TestException.class);
 
@@ -110,7 +112,7 @@ public class CompletableAmbTest {
 
     @Test
     public void nullSourceSuccessRace() {
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < TestHelper.RACE_DEFAULT_LOOPS; i++) {
             List<Throwable> errors = TestHelper.trackPluginErrors();
 
             try {
@@ -134,7 +136,7 @@ public class CompletableAmbTest {
                     }
                 };
 
-                TestHelper.race(r1, r2, Schedulers.single());
+                TestHelper.race(r1, r2);
 
                 if (!errors.isEmpty()) {
                     TestHelper.assertError(errors, 0, NullPointerException.class);
@@ -161,6 +163,100 @@ public class CompletableAmbTest {
     public void ambArrayOrder() {
         Completable error = Completable.error(new RuntimeException());
         Completable.ambArray(Completable.complete(), error).test().assertComplete();
+    }
+
+    @Test
+    public void ambRace() {
+        TestObserver<Void> to = new TestObserver<Void>();
+        to.onSubscribe(Disposables.empty());
+
+        CompositeDisposable cd = new CompositeDisposable();
+        AtomicBoolean once = new AtomicBoolean();
+        Amb a = new Amb(once, cd, to);
+
+        a.onComplete();
+        a.onComplete();
+
+        List<Throwable> errors = TestHelper.trackPluginErrors();
+        try {
+            a.onError(new TestException());
+
+            TestHelper.assertUndeliverable(errors, 0, TestException.class);
+        } finally {
+            RxJavaPlugins.reset();
+        }
+    }
+
+    @Test
+    public void untilCompletableMainComplete() {
+        CompletableSubject main = CompletableSubject.create();
+        CompletableSubject other = CompletableSubject.create();
+
+        TestObserver<Void> to = main.ambWith(other).test();
+
+        assertTrue("Main no observers?", main.hasObservers());
+        assertTrue("Other no observers?", other.hasObservers());
+
+        main.onComplete();
+
+        assertFalse("Main has observers?", main.hasObservers());
+        assertFalse("Other has observers?", other.hasObservers());
+
+        to.assertResult();
+    }
+
+    @Test
+    public void untilCompletableMainError() {
+        CompletableSubject main = CompletableSubject.create();
+        CompletableSubject other = CompletableSubject.create();
+
+        TestObserver<Void> to = main.ambWith(other).test();
+
+        assertTrue("Main no observers?", main.hasObservers());
+        assertTrue("Other no observers?", other.hasObservers());
+
+        main.onError(new TestException());
+
+        assertFalse("Main has observers?", main.hasObservers());
+        assertFalse("Other has observers?", other.hasObservers());
+
+        to.assertFailure(TestException.class);
+    }
+
+    @Test
+    public void untilCompletableOtherOnComplete() {
+        CompletableSubject main = CompletableSubject.create();
+        CompletableSubject other = CompletableSubject.create();
+
+        TestObserver<Void> to = main.ambWith(other).test();
+
+        assertTrue("Main no observers?", main.hasObservers());
+        assertTrue("Other no observers?", other.hasObservers());
+
+        other.onComplete();
+
+        assertFalse("Main has observers?", main.hasObservers());
+        assertFalse("Other has observers?", other.hasObservers());
+
+        to.assertResult();
+    }
+
+    @Test
+    public void untilCompletableOtherError() {
+        CompletableSubject main = CompletableSubject.create();
+        CompletableSubject other = CompletableSubject.create();
+
+        TestObserver<Void> to = main.ambWith(other).test();
+
+        assertTrue("Main no observers?", main.hasObservers());
+        assertTrue("Other no observers?", other.hasObservers());
+
+        other.onError(new TestException());
+
+        assertFalse("Main has observers?", main.hasObservers());
+        assertFalse("Other has observers?", other.hasObservers());
+
+        to.assertFailure(TestException.class);
     }
 
 }
