@@ -15,16 +15,18 @@ package io.reactivex.internal.operators.flowable;
 
 import static org.junit.Assert.assertEquals;
 
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.Test;
 import org.reactivestreams.Publisher;
 
 import io.reactivex.*;
-import io.reactivex.exceptions.TestException;
+import io.reactivex.exceptions.*;
 import io.reactivex.functions.*;
-import io.reactivex.internal.operators.flowable.FlowableConcatMap.WeakScalarSubscription;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.operators.flowable.FlowableConcatMap.SimpleScalarSubscription;
+import io.reactivex.processors.PublishProcessor;
 import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subscribers.TestSubscriber;
 
@@ -33,7 +35,7 @@ public class FlowableConcatMapTest {
     @Test
     public void weakSubscriptionRequest() {
         TestSubscriber<Integer> ts = new TestSubscriber<Integer>(0);
-        WeakScalarSubscription<Integer> ws = new WeakScalarSubscription<Integer>(1, ts);
+        SimpleScalarSubscription<Integer> ws = new SimpleScalarSubscription<Integer>(1, ts);
         ts.onSubscribe(ws);
 
         ws.request(0);
@@ -106,6 +108,68 @@ public class FlowableConcatMapTest {
     }
 
     @Test
+    public void innerScalarRequestRace() {
+        final Flowable<Integer> just = Flowable.just(1);
+        final int n = 1000;
+        for (int i = 0; i < TestHelper.RACE_DEFAULT_LOOPS; i++) {
+            final PublishProcessor<Flowable<Integer>> source = PublishProcessor.create();
+
+            final TestSubscriber<Integer> ts = source
+                    .concatMap(Functions.<Flowable<Integer>>identity(), n + 1)
+                    .test(1L);
+
+            TestHelper.race(new Runnable() {
+                @Override
+                public void run() {
+                    for (int j = 0; j < n; j++) {
+                        source.onNext(just);
+                    }
+                }
+            }, new Runnable() {
+                @Override
+                public void run() {
+                    for (int j = 0; j < n; j++) {
+                        ts.request(1);
+                    }
+                }
+            });
+
+            ts.assertValueCount(n);
+        }
+    }
+
+    @Test
+    public void innerScalarRequestRaceDelayError() {
+        final Flowable<Integer> just = Flowable.just(1);
+        final int n = 1000;
+        for (int i = 0; i < TestHelper.RACE_DEFAULT_LOOPS; i++) {
+            final PublishProcessor<Flowable<Integer>> source = PublishProcessor.create();
+
+            final TestSubscriber<Integer> ts = source
+                    .concatMapDelayError(Functions.<Flowable<Integer>>identity(), n + 1, true)
+                    .test(1L);
+
+            TestHelper.race(new Runnable() {
+                @Override
+                public void run() {
+                    for (int j = 0; j < n; j++) {
+                        source.onNext(just);
+                    }
+                }
+            }, new Runnable() {
+                @Override
+                public void run() {
+                    for (int j = 0; j < n; j++) {
+                        ts.request(1);
+                    }
+                }
+            });
+
+            ts.assertValueCount(n);
+        }
+    }
+
+    @Test
     public void pollThrows() {
         Flowable.just(1)
         .map(new Function<Integer, Integer>() {
@@ -167,5 +231,43 @@ public class FlowableConcatMapTest {
         .assertResult(1, 2, 3, 4, 5);
 
         assertEquals(0, counter.get());
+    }
+
+    @Test
+    public void delayErrorCallableTillTheEnd() {
+        Flowable.just(1, 2, 3, 101, 102, 23, 890, 120, 32)
+        .concatMapDelayError(new Function<Integer, Flowable<Integer>>() {
+          @Override public Flowable<Integer> apply(final Integer integer) throws Exception {
+            return Flowable.fromCallable(new Callable<Integer>() {
+              @Override public Integer call() throws Exception {
+                if (integer >= 100) {
+                  throw new NullPointerException("test null exp");
+                }
+                return integer;
+              }
+            });
+          }
+        })
+        .test()
+        .assertFailure(CompositeException.class, 1, 2, 3, 23, 32);
+    }
+
+    @Test
+    public void delayErrorCallableEager() {
+        Flowable.just(1, 2, 3, 101, 102, 23, 890, 120, 32)
+        .concatMapDelayError(new Function<Integer, Flowable<Integer>>() {
+          @Override public Flowable<Integer> apply(final Integer integer) throws Exception {
+            return Flowable.fromCallable(new Callable<Integer>() {
+              @Override public Integer call() throws Exception {
+                if (integer >= 100) {
+                  throw new NullPointerException("test null exp");
+                }
+                return integer;
+              }
+            });
+          }
+        }, 2, false)
+        .test()
+        .assertFailure(NullPointerException.class, 1, 2, 3);
     }
 }

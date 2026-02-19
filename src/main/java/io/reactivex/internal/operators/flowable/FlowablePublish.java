@@ -33,7 +33,8 @@ import io.reactivex.plugins.RxJavaPlugins;
  * manner.
  * @param <T> the value type
  */
-public final class FlowablePublish<T> extends ConnectableFlowable<T> implements HasUpstreamPublisher<T> {
+public final class FlowablePublish<T> extends ConnectableFlowable<T>
+implements HasUpstreamPublisher<T>, FlowablePublishClassic<T> {
     /**
      * Indicates this child has been cancelled: the state is swapped in atomically and
      * will prevent the dispatch() to emit (too many) values to a terminated child subscriber.
@@ -74,6 +75,20 @@ public final class FlowablePublish<T> extends ConnectableFlowable<T> implements 
 
     @Override
     public Publisher<T> source() {
+        return source;
+    }
+
+    /**
+     * The internal buffer size of this FloawblePublish operator.
+     * @return The internal buffer size of this FloawblePublish operator.
+     */
+    @Override
+    public int publishBufferSize() {
+        return bufferSize;
+    }
+
+    @Override
+    public Publisher<T> publishSource() {
         return source;
     }
 
@@ -557,12 +572,20 @@ public final class FlowablePublish<T> extends ConnectableFlowable<T> implements 
                         InnerSubscriber<T>[] freshArray = subscribers.get();
                         if (subscribersChanged || freshArray != ps) {
                             ps = freshArray;
+
+                            // if we did emit at least one element, request more to replenish the queue
+                            if (d != 0) {
+                                if (sourceMode != QueueSubscription.SYNC) {
+                                    upstream.get().request(d);
+                                }
+                            }
+
                             continue outer;
                         }
                     }
 
                     // if we did emit at least one element, request more to replenish the queue
-                    if (d > 0) {
+                    if (d != 0) {
                         if (sourceMode != QueueSubscription.SYNC) {
                             upstream.get().request(d);
                         }

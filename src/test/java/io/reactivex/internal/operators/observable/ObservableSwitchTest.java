@@ -17,7 +17,7 @@ import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.*;
 
@@ -25,16 +25,18 @@ import org.junit.*;
 import org.mockito.InOrder;
 
 import io.reactivex.*;
+import io.reactivex.Observable;
+import io.reactivex.Observer;
 import io.reactivex.disposables.*;
 import io.reactivex.exceptions.*;
 import io.reactivex.functions.*;
 import io.reactivex.internal.functions.Functions;
 import io.reactivex.internal.schedulers.ImmediateThinScheduler;
 import io.reactivex.internal.util.ExceptionHelper;
-import io.reactivex.observers.TestObserver;
+import io.reactivex.observers.*;
 import io.reactivex.plugins.RxJavaPlugins;
 import io.reactivex.schedulers.*;
-import io.reactivex.subjects.*;
+import io.reactivex.subjects.PublishSubject;
 
 public class ObservableSwitchTest {
 
@@ -1191,5 +1193,103 @@ public class ObservableSwitchTest {
         .assertNever(thread)
         .assertNoErrors()
         .assertComplete();
+    }
+
+    @Test
+    public void switchMapFusedIterable() {
+        Observable.range(1, 2)
+        .switchMap(new Function<Integer, Observable<Integer>>() {
+            @Override
+            public Observable<Integer> apply(Integer v)
+                    throws Exception {
+                return Observable.fromIterable(Arrays.asList(v * 10));
+            }
+        })
+        .test()
+        .assertResult(10, 20);
+    }
+
+    @Test
+    public void switchMapHiddenIterable() {
+        Observable.range(1, 2)
+        .switchMap(new Function<Integer, Observable<Integer>>() {
+            @Override
+            public Observable<Integer> apply(Integer v)
+                    throws Exception {
+                return Observable.fromIterable(Arrays.asList(v * 10)).hide();
+            }
+        })
+        .test()
+        .assertResult(10, 20);
+    }
+
+    @Test
+    public void cancellationShouldTriggerInnerCancellationRace() throws Throwable {
+        final AtomicInteger outer = new AtomicInteger();
+        final AtomicInteger inner = new AtomicInteger();
+
+        int n = 10000;
+        for (int i = 0; i < n; i++) {
+            Observable.<Integer>create(new ObservableOnSubscribe<Integer>() {
+                @Override
+                public void subscribe(ObservableEmitter<Integer> it)
+                        throws Exception {
+                            it.onNext(0);
+                        }
+            })
+            .switchMap(new Function<Integer, ObservableSource<Integer>>() {
+                @Override
+                public ObservableSource<Integer> apply(Integer v)
+                        throws Exception {
+                    return createObservable(inner);
+                }
+            })
+            .observeOn(Schedulers.computation())
+            .doFinally(new Action() {
+                @Override
+                public void run() throws Exception {
+                    outer.incrementAndGet();
+                }
+            })
+            .take(1)
+            .blockingSubscribe(Functions.emptyConsumer(), new Consumer<Throwable>() {
+                @Override
+                public void accept(Throwable e) throws Exception {
+                    e.printStackTrace();
+                }
+            });
+        }
+
+        Thread.sleep(100);
+        assertEquals(inner.get(), outer.get());
+        assertEquals(n, inner.get());
+    }
+
+    Observable<Integer> createObservable(final AtomicInteger inner) {
+        return Observable.<Integer>unsafeCreate(new ObservableSource<Integer>() {
+            @Override
+            public void subscribe(Observer<? super Integer> observer) {
+                final SerializedObserver<Integer> it = new SerializedObserver<Integer>(observer);
+                it.onSubscribe(Disposables.empty());
+                Schedulers.io().scheduleDirect(new Runnable() {
+                    @Override
+                    public void run() {
+                        it.onNext(1);
+                    }
+                }, 0, TimeUnit.MILLISECONDS);
+                Schedulers.io().scheduleDirect(new Runnable() {
+                    @Override
+                    public void run() {
+                        it.onNext(2);
+                    }
+                }, 0, TimeUnit.MILLISECONDS);
+            }
+        })
+        .doFinally(new Action() {
+            @Override
+            public void run() throws Exception {
+                inner.incrementAndGet();
+            }
+        });
     }
 }

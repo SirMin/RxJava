@@ -19,7 +19,7 @@ import static org.mockito.Mockito.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.*;
 
 import org.junit.*;
 import org.mockito.InOrder;
@@ -1201,5 +1201,103 @@ public class FlowableSwitchTest {
         .assertNever(thread)
         .assertNoErrors()
         .assertComplete();
+    }
+
+    @Test
+    public void switchMapFusedIterable() {
+        Flowable.range(1, 2)
+        .switchMap(new Function<Integer, Publisher<Integer>>() {
+            @Override
+            public Publisher<Integer> apply(Integer v)
+                    throws Exception {
+                return Flowable.fromIterable(Arrays.asList(v * 10));
+            }
+        })
+        .test()
+        .assertResult(10, 20);
+    }
+
+    @Test
+    public void switchMapHiddenIterable() {
+        Flowable.range(1, 2)
+        .switchMap(new Function<Integer, Publisher<Integer>>() {
+            @Override
+            public Publisher<Integer> apply(Integer v)
+                    throws Exception {
+                return Flowable.fromIterable(Arrays.asList(v * 10)).hide();
+            }
+        })
+        .test()
+        .assertResult(10, 20);
+    }
+
+    @Test
+    public void cancellationShouldTriggerInnerCancellationRace() throws Throwable {
+        final AtomicInteger outer = new AtomicInteger();
+        final AtomicInteger inner = new AtomicInteger();
+
+        int n = 10000;
+        for (int i = 0; i < n; i++) {
+            Flowable.<Integer>create(new FlowableOnSubscribe<Integer>() {
+                @Override
+                public void subscribe(FlowableEmitter<Integer> it)
+                        throws Exception {
+                            it.onNext(0);
+                        }
+            }, BackpressureStrategy.MISSING)
+            .switchMap(new Function<Integer, Publisher<? extends Object>>() {
+                @Override
+                public Publisher<? extends Object> apply(Integer v)
+                        throws Exception {
+                    return createFlowable(inner);
+                }
+            })
+            .observeOn(Schedulers.computation())
+            .doFinally(new Action() {
+                @Override
+                public void run() throws Exception {
+                    outer.incrementAndGet();
+                }
+            })
+            .take(1)
+            .blockingSubscribe(Functions.emptyConsumer(), new Consumer<Throwable>() {
+                @Override
+                public void accept(Throwable e) throws Exception {
+                    e.printStackTrace();
+                }
+            });
+        }
+
+        Thread.sleep(100);
+        assertEquals(inner.get(), outer.get());
+        assertEquals(n, inner.get());
+    }
+
+    Flowable<Integer> createFlowable(final AtomicInteger inner) {
+        return Flowable.<Integer>unsafeCreate(new Publisher<Integer>() {
+            @Override
+            public void subscribe(Subscriber<? super Integer> s) {
+                final SerializedSubscriber<Integer> it = new SerializedSubscriber<Integer>(s);
+                it.onSubscribe(new BooleanSubscription());
+                Schedulers.io().scheduleDirect(new Runnable() {
+                    @Override
+                    public void run() {
+                        it.onNext(1);
+                    }
+                }, 0, TimeUnit.MILLISECONDS);
+                Schedulers.io().scheduleDirect(new Runnable() {
+                    @Override
+                    public void run() {
+                        it.onNext(2);
+                    }
+                }, 0, TimeUnit.MILLISECONDS);
+            }
+        })
+        .doFinally(new Action() {
+            @Override
+            public void run() throws Exception {
+                inner.incrementAndGet();
+            }
+        });
     }
 }

@@ -453,6 +453,8 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
                 cancelled = true;
                 // remove this from the parent
                 parent.remove(this);
+                // make sure the last known node is not retained
+                index = null;
             }
         }
         /**
@@ -636,6 +638,11 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
             }
 
             setFirst(head);
+            // correct the tail if all items have been removed
+            head = get();
+            if (head.get() == null) {
+                tail = head;
+            }
         }
         /**
          * Arranges the given node is the new head from now on.
@@ -686,6 +693,7 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
 
                 for (;;) {
                     if (output.isDisposed()) {
+                        output.index = null;
                         return;
                     }
 
@@ -836,7 +844,7 @@ public final class ObservableReplay<T> extends ConnectableObservable<T> implemen
             int e = 0;
             for (;;) {
                 if (next != null) {
-                    if (size > limit) {
+                    if (size > limit && size > 1) { // never truncate the very last item just added
                         e++;
                         size--;
                         prev = next;

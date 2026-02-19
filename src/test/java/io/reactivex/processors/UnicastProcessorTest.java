@@ -16,16 +16,20 @@ package io.reactivex.processors;
 import static org.junit.Assert.*;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.Test;
 
 import io.reactivex.*;
 import io.reactivex.disposables.Disposable;
-import io.reactivex.exceptions.TestException;
-import io.reactivex.internal.fuseable.*;
+import io.reactivex.exceptions.*;
+import io.reactivex.internal.functions.Functions;
+import io.reactivex.internal.fuseable.QueueFuseable;
 import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.observers.TestObserver;
 import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subscribers.*;
 
 public class UnicastProcessorTest extends FlowableProcessorTest<Object> {
@@ -132,9 +136,9 @@ public class UnicastProcessorTest extends FlowableProcessorTest<Object> {
             }
         });
 
-        assertEquals(false, didRunOnTerminate.get());
+        assertFalse(didRunOnTerminate.get());
         us.onError(new RuntimeException("some error"));
-        assertEquals(true, didRunOnTerminate.get());
+        assertTrue(didRunOnTerminate.get());
     }
 
     @Test
@@ -147,9 +151,9 @@ public class UnicastProcessorTest extends FlowableProcessorTest<Object> {
             }
         });
 
-        assertEquals(false, didRunOnTerminate.get());
+        assertFalse(didRunOnTerminate.get());
         us.onComplete();
-        assertEquals(true, didRunOnTerminate.get());
+        assertTrue(didRunOnTerminate.get());
     }
 
     @Test
@@ -164,9 +168,9 @@ public class UnicastProcessorTest extends FlowableProcessorTest<Object> {
 
         final Disposable subscribe = us.subscribe();
 
-        assertEquals(false, didRunOnTerminate.get());
+        assertFalse(didRunOnTerminate.get());
         subscribe.dispose();
-        assertEquals(true, didRunOnTerminate.get());
+        assertTrue(didRunOnTerminate.get());
     }
 
     @Test(expected = NullPointerException.class)
@@ -436,6 +440,39 @@ public class UnicastProcessorTest extends FlowableProcessorTest<Object> {
             TestHelper.assertError(errors, 0, IllegalArgumentException.class);
         } finally {
             RxJavaPlugins.reset();
+        }
+    }
+
+    @Test
+    public void fusedNoConcurrentCleanDueToCancel() {
+        for (int j = 0; j < TestHelper.RACE_LONG_LOOPS; j++) {
+            List<Throwable> errors = TestHelper.trackPluginErrors();
+            try {
+                final UnicastProcessor<Integer> us = UnicastProcessor.create();
+
+                TestObserver<Integer> to = us
+                .observeOn(Schedulers.io())
+                .map(Functions.<Integer>identity())
+                .observeOn(Schedulers.single())
+                .firstOrError()
+                .test();
+
+                for (int i = 0; us.hasSubscribers(); i++) {
+                    us.onNext(i);
+                }
+
+                to
+                .awaitDone(5, TimeUnit.SECONDS)
+                ;
+
+                if (!errors.isEmpty()) {
+                    throw new CompositeException(errors);
+                }
+
+                to.assertResult(0);
+            } finally {
+                RxJavaPlugins.reset();
+            }
         }
     }
 }

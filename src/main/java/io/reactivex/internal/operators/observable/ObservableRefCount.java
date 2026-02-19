@@ -22,7 +22,6 @@ import io.reactivex.functions.Consumer;
 import io.reactivex.internal.disposables.*;
 import io.reactivex.observables.ConnectableObservable;
 import io.reactivex.plugins.RxJavaPlugins;
-import io.reactivex.schedulers.Schedulers;
 
 /**
  * Returns an observable sequence that stays connected to the source as long as
@@ -46,7 +45,7 @@ public final class ObservableRefCount<T> extends Observable<T> {
     RefConnection connection;
 
     public ObservableRefCount(ConnectableObservable<T> source) {
-        this(source, 1, 0L, TimeUnit.NANOSECONDS, Schedulers.trampoline());
+        this(source, 1, 0L, TimeUnit.NANOSECONDS, null);
     }
 
     public ObservableRefCount(ConnectableObservable<T> source, int n, long timeout, TimeUnit unit,
@@ -113,19 +112,39 @@ public final class ObservableRefCount<T> extends Observable<T> {
 
     void terminated(RefConnection rc) {
         synchronized (this) {
-            if (connection != null && connection == rc) {
-                connection = null;
-                if (rc.timer != null) {
-                    rc.timer.dispose();
+            if (source instanceof ObservablePublishClassic) {
+                if (connection != null && connection == rc) {
+                    connection = null;
+                    clearTimer(rc);
+                }
+
+                if (--rc.subscriberCount == 0) {
+                    reset(rc);
+                }
+            } else {
+                if (connection != null && connection == rc) {
+                    clearTimer(rc);
+                    if (--rc.subscriberCount == 0) {
+                        connection = null;
+                        reset(rc);
+                    }
                 }
             }
-            if (--rc.subscriberCount == 0) {
-                if (source instanceof Disposable) {
-                    ((Disposable)source).dispose();
-                } else if (source instanceof ResettableConnectable) {
-                    ((ResettableConnectable)source).resetIf(rc.get());
-                }
-            }
+        }
+    }
+
+    void clearTimer(RefConnection rc) {
+        if (rc.timer != null) {
+            rc.timer.dispose();
+            rc.timer = null;
+        }
+    }
+
+    void reset(RefConnection rc) {
+        if (source instanceof Disposable) {
+            ((Disposable)source).dispose();
+        } else if (source instanceof ResettableConnectable) {
+            ((ResettableConnectable)source).resetIf(rc.get());
         }
     }
 

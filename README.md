@@ -1,5 +1,13 @@
 # RxJava: Reactive Extensions for the JVM
 
+## End-of-Life notice
+
+As of February 28, 2021, The RxJava 2.x branch and version is end-of-life (EOL). No further development, bugfixes, documentation changes, PRs, releases or maintenance will be performed by the project on the 2.x line.
+
+Users are encouraged to migrate to [3.x](https://github.com/ReactiveX/RxJava) which is currently the only official RxJava version being managed.
+
+----
+
 <a href='https://travis-ci.org/ReactiveX/RxJava/builds'><img src='https://travis-ci.org/ReactiveX/RxJava.svg?branch=2.x'></a>
 [![codecov.io](http://codecov.io/github/ReactiveX/RxJava/coverage.svg?branch=2.x)](https://codecov.io/gh/ReactiveX/RxJava/branch/2.x)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/io.reactivex.rxjava2/rxjava/badge.svg)](https://maven-badges.herokuapp.com/maven-central/io.reactivex.rxjava2/rxjava)
@@ -10,7 +18,7 @@ It extends the [observer pattern](http://en.wikipedia.org/wiki/Observer_pattern)
 
 #### Version 2.x ([Javadoc](http://reactivex.io/RxJava/2.x/javadoc/))
 
-- single dependency: [Reactive-Streams](https://github.com/reactive-streams/reactive-streams-jvm)  
+- single dependency: [Reactive Streams](https://github.com/reactive-streams/reactive-streams-jvm)  
 - continued support for Java 6+ & [Android](https://github.com/ReactiveX/RxAndroid) 2.3+
 - performance gains through design changes learned through the 1.x cycle and through [Reactive-Streams-Commons](https://github.com/reactor/reactive-streams-commons) research project.
 - Java 8 lambda-friendly API
@@ -72,7 +80,7 @@ Flowable.just("Hello world")
 
 RxJava 2 features several base classes you can discover operators on:
 
-  - [`io.reactivex.Flowable`](http://reactivex.io/RxJava/2.x/javadoc/io/reactivex/Flowable.html): 0..N flows, supporting Reactive-Streams and backpressure
+  - [`io.reactivex.Flowable`](http://reactivex.io/RxJava/2.x/javadoc/io/reactivex/Flowable.html): 0..N flows, supporting Reactive Streams and backpressure
   - [`io.reactivex.Observable`](http://reactivex.io/RxJava/2.x/javadoc/io/reactivex/Observable.html): 0..N flows, no backpressure,
   - [`io.reactivex.Single`](http://reactivex.io/RxJava/2.x/javadoc/io/reactivex/Single.html): a flow of exactly 1 item or an error,
   - [`io.reactivex.Completable`](http://reactivex.io/RxJava/2.x/javadoc/io/reactivex/Completable.html): a flow without items but only a completion or error signal,
@@ -258,12 +266,10 @@ Flowable.range(1, 10)
 ```java
 Flowable<Inventory> inventorySource = warehouse.getInventoryAsync();
 
-inventorySource.flatMap(inventoryItem ->
-    erp.getDemandAsync(inventoryItem.getId())
-    .map(demand 
-        -> System.out.println("Item " + inventoryItem.getName() + " has demand " + demand));
-  )
-  .subscribe();
+inventorySource
+    .flatMap(inventoryItem -> erp.getDemandAsync(inventoryItem.getId())
+            .map(demand -> "Item " + inventoryItem.getName() + " has demand " + demand))
+    .subscribe(System.out::println);
 ```
 
 ### Continuations
@@ -369,7 +375,7 @@ Each reactive base class features operators that can perform such conversions, i
 |----------|----------|------------|--------|-------|-------------|
 |**Flowable**  |          | `toObservable` | `first`, `firstOrError`, `single`, `singleOrError`, `last`, `lastOrError`<sup>1</sup> | `firstElement`, `singleElement`, `lastElement` | `ignoreElements` |
 |**Observable**| `toFlowable`<sup>2</sup> |  | `first`, `firstOrError`, `single`, `singleOrError`, `last`, `lastOrError`<sup>1</sup> | `firstElement`, `singleElement`, `lastElement` | `ignoreElements` |
-|**Single** | `toFlowable`<sup>3</sup> | `toObservable` |  | `toMaybe` | `toCompletable` |
+|**Single** | `toFlowable`<sup>3</sup> | `toObservable` |  | `toMaybe` | `ignoreElement` |
 |**Maybe** | `toFlowable`<sup>3</sup> | `toObservable` | `toSingle` |  | `ignoreElement` |
 |**Completable** | `toFlowable` | `toObservable` | `toSingle` | `toMaybe` |  |
 

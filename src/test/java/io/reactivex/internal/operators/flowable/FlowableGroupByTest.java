@@ -30,12 +30,13 @@ import com.google.common.base.Ticker;
 import com.google.common.cache.*;
 
 import io.reactivex.*;
-import io.reactivex.exceptions.TestException;
+import io.reactivex.exceptions.*;
 import io.reactivex.flowables.GroupedFlowable;
 import io.reactivex.functions.*;
 import io.reactivex.internal.functions.Functions;
-import io.reactivex.internal.fuseable.QueueFuseable;
+import io.reactivex.internal.fuseable.*;
 import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.plugins.RxJavaPlugins;
 import io.reactivex.processors.PublishProcessor;
 import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subjects.PublishSubject;
@@ -2205,5 +2206,148 @@ public class FlowableGroupByTest {
                                     }});
                     }};
         return evictingMapFactory;
+    }
+
+    @Test
+    public void fusedNoConcurrentCleanDueToCancel() {
+        for (int j = 0; j < TestHelper.RACE_LONG_LOOPS; j++) {
+            List<Throwable> errors = TestHelper.trackPluginErrors();
+            try {
+                final PublishProcessor<Integer> pp = PublishProcessor.create();
+
+                final AtomicReference<QueueSubscription<GroupedFlowable<Integer, Integer>>> qs = new AtomicReference<QueueSubscription<GroupedFlowable<Integer, Integer>>>();
+
+                final TestSubscriber<Integer> ts2 = new TestSubscriber<Integer>();
+
+                pp.groupBy(Functions.<Integer>identity(), Functions.<Integer>identity(), false, 4)
+                .subscribe(new FlowableSubscriber<GroupedFlowable<Integer, Integer>>() {
+
+                    boolean once;
+
+                    @Override
+                    public void onNext(GroupedFlowable<Integer, Integer> g) {
+                        if (!once) {
+                            try {
+                                GroupedFlowable<Integer, Integer> t = qs.get().poll();
+                                if (t != null) {
+                                    once = true;
+                                    t.subscribe(ts2);
+                                }
+                            } catch (Throwable ignored) {
+                                // not relevant here
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void onError(Throwable t) {
+                    }
+
+                    @Override
+                    public void onComplete() {
+                    }
+
+                    @Override
+                    public void onSubscribe(Subscription s) {
+                        @SuppressWarnings("unchecked")
+                        QueueSubscription<GroupedFlowable<Integer, Integer>> q = (QueueSubscription<GroupedFlowable<Integer, Integer>>)s;
+                        qs.set(q);
+                        q.requestFusion(QueueFuseable.ANY);
+                        q.request(1);
+                    }
+                })
+                ;
+
+                Runnable r1 = new Runnable() {
+                    @Override
+                    public void run() {
+                        qs.get().cancel();
+                        qs.get().clear();
+                    }
+                };
+                Runnable r2 = new Runnable() {
+                    @Override
+                    public void run() {
+                        ts2.cancel();
+                    }
+                };
+
+                for (int i = 0; i < 100; i++) {
+                    pp.onNext(i);
+                }
+
+                TestHelper.race(r1, r2);
+
+                if (!errors.isEmpty()) {
+                    throw new CompositeException(errors);
+                }
+            } finally {
+                RxJavaPlugins.reset();
+            }
+        }
+    }
+
+    @Test
+    public void fusedParallelGroupProcessing() {
+        Flowable.range(0, 500000)
+        .subscribeOn(Schedulers.single())
+        .groupBy(new Function<Integer, Integer>() {
+            @Override
+            public Integer apply(Integer i) {
+                return i % 2;
+            }
+        })
+        .flatMap(new Function<GroupedFlowable<Integer, Integer>, Publisher<Integer>>() {
+            @Override
+            public Publisher<Integer> apply(GroupedFlowable<Integer, Integer> g) {
+                return g.getKey() == 0
+                    ? g
+                        .parallel()
+                        .runOn(Schedulers.computation())
+                        .map(Functions.<Integer>identity())
+                        .sequential()
+                    : g.map(Functions.<Integer>identity()) // no need to use hide
+                ;
+            }
+        })
+        .test()
+        .awaitDone(20, TimeUnit.SECONDS)
+        .assertValueCount(500000)
+        .assertComplete()
+        .assertNoErrors();
+    }
+
+    @Test
+    public void cancelledGroupResumesRequesting() {
+        final List<TestSubscriber<Integer>> tss = new ArrayList<TestSubscriber<Integer>>();
+        final AtomicInteger counter = new AtomicInteger();
+        final AtomicBoolean done = new AtomicBoolean();
+        Flowable.range(1, 1000)
+                .doOnNext(new Consumer<Integer>() {
+                    @Override
+                    public void accept(Integer v) throws Exception {
+                        counter.getAndIncrement();
+                    }
+                })
+                .groupBy(Functions.justFunction(1))
+                .subscribe(new Consumer<GroupedFlowable<Integer, Integer>>() {
+                    @Override
+                    public void accept(GroupedFlowable<Integer, Integer> v) throws Exception {
+                        TestSubscriber<Integer> ts = TestSubscriber.create(0L);
+                        tss.add(ts);
+                        v.subscribe(ts);
+                    }
+                }, Functions.emptyConsumer(), new Action() {
+                    @Override
+                    public void run() throws Exception {
+                        done.set(true);
+                    }
+                });
+
+        while (!done.get()) {
+            tss.remove(0).cancel();
+        }
+
+        assertEquals(1000, counter.get());
     }
 }

@@ -13,7 +13,6 @@
 
 package io.reactivex.internal.operators.observable;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import java.util.concurrent.TimeUnit;
@@ -275,5 +274,28 @@ public class ObservableTakeLastTimedTest {
 
             TestHelper.race(r1, r2);
         }
+    }
+
+    @Test
+    public void lastWindowIsFixedInTime() {
+        TimesteppingScheduler scheduler = new TimesteppingScheduler();
+        scheduler.stepEnabled = false;
+
+        PublishSubject<Integer> ps = PublishSubject.create();
+
+        TestObserver<Integer> to = ps
+        .takeLast(2, TimeUnit.SECONDS, scheduler)
+        .test();
+
+        ps.onNext(1);
+        ps.onNext(2);
+        ps.onNext(3);
+        ps.onNext(4);
+
+        scheduler.stepEnabled = true;
+
+        ps.onComplete();
+
+        to.assertResult(1, 2, 3, 4);
     }
 }

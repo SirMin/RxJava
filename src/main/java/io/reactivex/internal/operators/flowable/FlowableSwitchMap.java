@@ -199,7 +199,6 @@ public final class FlowableSwitchMap<T, R> extends AbstractFlowableWithUpstream<
             for (;;) {
 
                 if (cancelled) {
-                    active.lazySet(null);
                     return;
                 }
 
@@ -314,7 +313,7 @@ public final class FlowableSwitchMap<T, R> extends AbstractFlowableWithUpstream<
                             if (r != Long.MAX_VALUE) {
                                 requested.addAndGet(-e);
                             }
-                            inner.get().request(e);
+                            inner.request(e);
                         }
                     }
 
@@ -398,6 +397,7 @@ public final class FlowableSwitchMap<T, R> extends AbstractFlowableWithUpstream<
             if (index == p.unique && p.error.addThrowable(t)) {
                 if (!p.delayErrors) {
                     p.upstream.cancel();
+                    p.done = true;
                 }
                 done = true;
                 p.drain();
@@ -417,6 +417,12 @@ public final class FlowableSwitchMap<T, R> extends AbstractFlowableWithUpstream<
 
         public void cancel() {
             SubscriptionHelper.cancel(this);
+        }
+
+        public void request(long n) {
+            if (fusionMode != QueueSubscription.SYNC) {
+                get().request(n);
+            }
         }
     }
 }

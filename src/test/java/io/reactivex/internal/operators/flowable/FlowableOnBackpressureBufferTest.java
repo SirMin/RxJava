@@ -15,17 +15,22 @@ package io.reactivex.internal.operators.flowable;
 
 import static org.junit.Assert.*;
 
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.Test;
 import org.reactivestreams.*;
 
-import io.reactivex.Flowable;
+import io.reactivex.*;
 import io.reactivex.exceptions.*;
 import io.reactivex.functions.*;
+import io.reactivex.internal.functions.Functions;
 import io.reactivex.internal.fuseable.QueueFuseable;
 import io.reactivex.internal.subscriptions.BooleanSubscription;
+import io.reactivex.observers.TestObserver;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.processors.PublishProcessor;
 import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subscribers.*;
 
@@ -143,7 +148,7 @@ public class FlowableOnBackpressureBufferTest {
 
         int size = ts.values().size();
         assertTrue(size <= 150);  // will get up to 50 more
-        assertTrue(ts.values().get(size - 1) == size - 1);
+        assertEquals((long)ts.values().get(size - 1), size - 1);
     }
 
     static final Flowable<Long> infinite = Flowable.unsafeCreate(new Publisher<Long>() {
@@ -306,5 +311,38 @@ public class FlowableOnBackpressureBufferTest {
 
         SubscriberFusion.assertFusion(ts, QueueFuseable.NONE)
         .assertEmpty();
+    }
+
+    @Test
+    public void fusedNoConcurrentCleanDueToCancel() {
+        for (int j = 0; j < TestHelper.RACE_LONG_LOOPS; j++) {
+            List<Throwable> errors = TestHelper.trackPluginErrors();
+            try {
+                final PublishProcessor<Integer> pp = PublishProcessor.create();
+
+                TestObserver<Integer> to = pp.onBackpressureBuffer(4, false, true)
+                .observeOn(Schedulers.io())
+                .map(Functions.<Integer>identity())
+                .observeOn(Schedulers.single())
+                .firstOrError()
+                .test();
+
+                for (int i = 0; pp.hasSubscribers(); i++) {
+                    pp.onNext(i);
+                }
+
+                to
+                .awaitDone(5, TimeUnit.SECONDS)
+                ;
+
+                if (!errors.isEmpty()) {
+                    throw new CompositeException(errors);
+                }
+
+                to.assertResult(0);
+            } finally {
+                RxJavaPlugins.reset();
+            }
+        }
     }
 }
